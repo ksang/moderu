@@ -9,12 +9,15 @@ import torch.nn.functional as F
 import torch.backends.cudnn as cudnn
 import torch.distributed as dist
 import torch.optim as optim
+import torch.multiprocessing as mp
 from torchvision import datasets, transforms
 
 parser = argparse.ArgumentParser(description='LeNet-5 MNIST Training')
 
 parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
                     help='number of data loading workers (default: 4)')
+parser.add_argument('--data', metavar='DIR', default='data',
+                    help='path to dataset')
 parser.add_argument('--epochs', default=10, type=int, metavar='N',
                     help='number of total epochs to run')
 parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
@@ -49,6 +52,8 @@ parser.add_argument('--seed', default=None, type=int,
                     help='seed for initializing training. ')
 parser.add_argument('--gpu', default=None, type=int,
                     help='GPU id to use.')
+parser.add_argument('--no-cuda', action='store_true', default=False,
+                    help='disables CUDA training')
 parser.add_argument('--multiprocessing-distributed', action='store_true',
                     help='Use multi-processing distributed training to launch '
                          'N processes per node, which has N GPUs. This is the '
@@ -100,7 +105,7 @@ def train(train_loader, model, criterion, optimizer, epoch, device, args):
 
         if batch_idx % args.print_freq == 0:
             end_time = time.time()
-            print('Train Epoch: {} [{:>5d}/{} ({:>3.0f}%)]  Throughput: {:.1f}/sec  Loss: {:.6f}'.format(
+            print('Train Epoch: {} [{:>5d}/{} ({:>3.0f}%)]  Throughput: {:>8.1f}/sec  Loss: {:.6f}'.format(
                 epoch, batch_idx * len(data), len(train_loader.dataset),
                 100. * batch_idx / len(train_loader),
                 args.batch_size * args.print_freq / (end_time - start_time),
@@ -121,6 +126,7 @@ def validate(val_loader, model, criterion, device, args):
             val_loss += criterion(output, target)
             # get the index of the max log-probability
             pred = output.argmax(dim=1, keepdim=True)
+            # Count samples that prediction equals to target
             correct += pred.eq(target.view_as(pred)).sum().item()
             batch_num += 1
 
@@ -129,7 +135,7 @@ def validate(val_loader, model, criterion, device, args):
             correct, len(val_loader.dataset),
             100. * correct / len(val_loader.dataset)))
 
-    return correct
+    return correct / len(val_loader.dataset)
 
 
 def worker(gpu, ngpus_per_node, args):
@@ -139,17 +145,54 @@ def worker(gpu, ngpus_per_node, args):
         print("Use GPU: {} for training".format(args.gpu))
         device = torch.device("cuda:"+str(args.gpu))
 
+    if args.distributed:
+        if args.dist_url == "env://" and args.rank == -1:
+            args.rank = int(os.environ["RANK"])
+        if args.multiprocessing_distributed:
+            # For multiprocessing distributed training, rank needs to be the
+            # global rank among all the processes
+            args.rank = args.rank * ngpus_per_node + gpu
+        dist.init_process_group(backend=args.dist_backend, init_method=args.dist_url,
+                                world_size=args.world_size, rank=args.rank)
+
+    model = LeNet5().to(device)
+
+    if args.distributed:
+        # For multiprocessing distributed, DistributedDataParallel constructor
+        # should always set the single device scope, otherwise,
+        # DistributedDataParallel will use all available devices.
+        if args.gpu is not None:
+            # When using a single GPU per process and per
+            # DistributedDataParallel, we need to divide the batch size
+            # ourselves based on the total number of GPUs we have
+            args.batch_size = int(args.batch_size / ngpus_per_node)
+            args.workers = int((args.workers + ngpus_per_node - 1) / ngpus_per_node)
+            model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu])
+        else:
+            model.cuda()
+            # DistributedDataParallel will divide and allocate batch_size to all
+            # available GPUs if device_ids are not set
+            model = torch.nn.parallel.DistributedDataParallel(model)
+    else:
+        model = torch.nn.DataParallel(model)
+
+    train_dataset = datasets.MNIST(args.data, train=True, download=True,
+                                   transform=transforms.Compose([
+                                   transforms.ToTensor(),
+                                   transforms.Normalize((0.1307,), (0.3081,))
+                                   ]))
+
+    if args.distributed:
+        train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
+    else:
+        train_sampler = None
+
     train_loader = torch.utils.data.DataLoader(
-        datasets.MNIST('../data', train=True, download=True,
-                        transform=transforms.Compose([
-                           transforms.ToTensor(),
-                           transforms.Normalize((0.1307,), (0.3081,))
-                        ])),
-        batch_size=args.batch_size, shuffle=True,
-        num_workers=args.workers, pin_memory=True)
+        train_dataset, batch_size=args.batch_size, shuffle=(train_sampler is None),
+        num_workers=args.workers, pin_memory=True, sampler=train_sampler)
 
     val_loader = torch.utils.data.DataLoader(
-        datasets.MNIST('../data', train=False,
+        datasets.MNIST(args.data, train=False,
                         transform=transforms.Compose([
                            transforms.ToTensor(),
                            transforms.Normalize((0.1307,), (0.3081,))
@@ -157,7 +200,7 @@ def worker(gpu, ngpus_per_node, args):
         batch_size=args.batch_size, shuffle=False,
         num_workers=args.workers, pin_memory=True)
 
-    model = LeNet5().to(device)
+
     # define loss function (criterion) and optimizer
     criterion = nn.CrossEntropyLoss().to(device)
 
@@ -205,11 +248,16 @@ def main():
         args.world_size = ngpus_per_node * args.world_size
         # Use torch.multiprocessing.spawn to launch distributed processes: the
         # main_worker process function
+        if ngpus_per_node == 0:
+            warnings.warn('No GPU found on this node, not launching any worker.')         
         mp.spawn(worker, nprocs=ngpus_per_node, args=(ngpus_per_node, args))
     else:
         # Simply call main_worker function
+        use_cuda = not args.no_cuda and torch.cuda.is_available()
+        if use_cuda and not args.gpu:
+            args.gpu = 0
         worker(args.gpu, ngpus_per_node, args)
 
 if __name__ == '__main__':
-    torch.multiprocessing.set_start_method('forkserver', force=True)
+    mp.set_start_method('forkserver', force=True)
     main()
