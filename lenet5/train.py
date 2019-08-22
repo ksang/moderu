@@ -2,6 +2,7 @@ import argparse
 import random
 import warnings
 import time
+import os
 
 import torch
 import torch.nn as nn
@@ -88,6 +89,11 @@ def adjust_learning_rate(optimizer, epoch, args):
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
 
+def save_checkpoint(state, filename='checkpoint/lenet5.tar'):
+    print("=> saving checkpoint to: {}".format(filename))
+    torch.save(state, filename)
+
+
 def train(train_loader, model, criterion, optimizer, epoch, device, args):
     # switch to train mode
     start_time = time.time()
@@ -105,12 +111,25 @@ def train(train_loader, model, criterion, optimizer, epoch, device, args):
 
         if batch_idx % args.print_freq == 0:
             end_time = time.time()
+            if batch_idx == 0:
+                thoughput = args.batch_size / (end_time - start_time)
+            else:
+                thoughput = args.batch_size * args.print_freq / (end_time - start_time)
             print('Train Epoch: {} [{:>5d}/{} ({:>3.0f}%)]  Throughput: {:>8.1f}/sec  Loss: {:.6f}'.format(
                 epoch, batch_idx * len(data), len(train_loader.dataset),
                 100. * batch_idx / len(train_loader),
-                args.batch_size * args.print_freq / (end_time - start_time),
+                thoughput,
                 loss.item()))
             start_time = time.time()
+
+    if not args.multiprocessing_distributed or \
+        (args.multiprocessing_distributed and args.rank % ngpus_per_node == 0):
+        save_checkpoint({
+            'epoch': epoch + 1,
+            'state_dict': model.state_dict(),
+            'optimizer' : optimizer.state_dict(),
+        })
+
 
 def validate(val_loader, model, criterion, device, args):
     # switch to evaluate mode
@@ -207,6 +226,19 @@ def worker(gpu, ngpus_per_node, args):
     optimizer = torch.optim.SGD(model.parameters(), args.lr,
                                 momentum=args.momentum,
                                 weight_decay=args.weight_decay)
+
+    # optionally resume from a checkpoint
+    if args.resume:
+        if os.path.isfile(args.resume):
+            print("=> loading checkpoint '{}'".format(args.resume))
+            checkpoint = torch.load(args.resume)
+            args.start_epoch = checkpoint['epoch']
+            model.load_state_dict(checkpoint['state_dict'])
+            optimizer.load_state_dict(checkpoint['optimizer'])
+            print("=> loaded checkpoint '{}' (epoch {})"
+                  .format(args.resume, checkpoint['epoch']))
+        else:
+            print("=> no checkpoint found at '{}'".format(args.resume))
 
     for epoch in range(args.start_epoch, args.epochs):
         if args.distributed:
