@@ -18,13 +18,13 @@ parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
                     help='number of data loading workers (default: 4)')
 parser.add_argument('--data', metavar='DIR', default='data',
                     help='path to dataset')
-parser.add_argument('--epochs', default=10, type=int, metavar='N',
+parser.add_argument('--epochs', default=30, type=int, metavar='N',
                     help='number of total epochs to run')
 parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
                     help='manual epoch number (useful on restarts)')
 parser.add_argument('-b', '--batch-size', default=64, type=int,
                     metavar='N',
-                    help='mini-batch size (default: 32), this is the total '
+                    help='mini-batch size (default: 64), this is the total '
                          'batch size of all GPUs on the current node when '
                          'using Data Parallel or Distributed Data Parallel')
 parser.add_argument('--lr', '--learning-rate', default=0.01, type=float,
@@ -83,8 +83,8 @@ class LeNet5(nn.Module):
         return F.log_softmax(x, dim=1)
 
 def adjust_learning_rate(optimizer, epoch, args):
-    """Sets the learning rate to the initial LR decayed by 10 every 30 epochs"""
-    lr = args.lr * (0.1 ** (epoch // 30))
+    """Sets the learning rate to the initial LR decayed by 10 every 10 epochs"""
+    lr = args.lr * (0.1 ** (epoch // 10))
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
 
@@ -176,7 +176,7 @@ def worker(gpu, ngpus_per_node, args):
     else:
         model = torch.nn.DataParallel(model)
 
-    train_dataset = datasets.MNIST(args.data, train=True, download=True,
+    train_dataset = datasets.MNIST(args.data, train=True, download=False,
                                    transform=transforms.Compose([
                                    transforms.ToTensor(),
                                    transforms.Normalize((0.1307,), (0.3081,))
@@ -239,6 +239,9 @@ def main():
     if args.dist_url == "env://" and args.world_size == -1:
         args.world_size = int(os.environ["WORLD_SIZE"])
 
+    prepare_dataset = datasets.MNIST(args.data, download=True)
+
+
     args.distributed = args.world_size > 1 or args.multiprocessing_distributed
 
     ngpus_per_node = torch.cuda.device_count()
@@ -249,7 +252,7 @@ def main():
         # Use torch.multiprocessing.spawn to launch distributed processes: the
         # main_worker process function
         if ngpus_per_node == 0:
-            warnings.warn('No GPU found on this node, not launching any worker.')         
+            warnings.warn('No GPU found on this node, not launching any worker.')
         mp.spawn(worker, nprocs=ngpus_per_node, args=(ngpus_per_node, args))
     else:
         # Simply call main_worker function
