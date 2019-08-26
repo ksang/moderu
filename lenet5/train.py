@@ -6,12 +6,12 @@ import os
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import torch.backends.cudnn as cudnn
 import torch.distributed as dist
 import torch.optim as optim
 import torch.multiprocessing as mp
 from torchvision import datasets, transforms
+from model import LeNet5
 
 parser = argparse.ArgumentParser(description='LeNet-5 MNIST Training')
 
@@ -61,38 +61,18 @@ parser.add_argument('--multiprocessing-distributed', action='store_true',
                          'fastest way to use PyTorch for either single node or '
                          'multi node data parallel training')
 
-class LeNet5(nn.Module):
-    def __init__(self):
-        super(LeNet5, self).__init__()
-        # Input data shape (1, 28, 28)
-        # in_channel=1, out_channel=6, kernel_size=5, stride=1, padding=2
-        self.conv1 = nn.Conv2d(1, 6, 5, 1, 2)
-        # in_channel=6, out_channel=16, kernel_size=5, stride=1
-        self.conv2 = nn.Conv2d(6, 16, 5, 1)
-        # in_channel=6, out_channel=16, kernel_size=5, stride=1
-        self.fc1 = nn.Linear(16*5*5, 84)
-        self.fc2 = nn.Linear(84, 10)
-
-    def forward(self, x):
-        x = F.relu(self.conv1(x))
-        x = F.max_pool2d(x, 2, 2)
-        x = F.relu(self.conv2(x))
-        x = F.max_pool2d(x, 2, 2)
-        x = x.view(-1, 16*5*5)
-        x = F.relu(self.fc1(x))
-        x = self.fc2(x)
-        return F.log_softmax(x, dim=1)
-
 def adjust_learning_rate(optimizer, epoch, args):
     """Sets the learning rate to the initial LR decayed by 10 every 10 epochs"""
     lr = args.lr * (0.1 ** (epoch // 10))
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
 
-def save_checkpoint(state, filename='checkpoint/lenet5.tar'):
+def save_checkpoint(state, filename='lenet5.tar', cpdir='checkpoints'):
+    if not os.path.exists(cpdir):
+        os.makedirs(cpdir)
+    filename = os.path.join(cpdir, filename)
     print("=> saving checkpoint to: {}".format(filename))
     torch.save(state, filename)
-
 
 def train(train_loader, model, criterion, optimizer, epoch, device, args):
     # switch to train mode
