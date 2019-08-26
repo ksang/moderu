@@ -104,7 +104,7 @@ def train(train_loader, model, criterion, optimizer, epoch, device, args):
             start_time = time.time()
 
     if not args.multiprocessing_distributed or \
-        (args.multiprocessing_distributed and args.rank % ngpus_per_node == 0):
+        (args.multiprocessing_distributed and args.rank == 0):
         save_checkpoint({
             'epoch': epoch + 1,
             'state_dict': model.state_dict(),
