@@ -56,6 +56,7 @@ parser.add_argument('--gpu', default=None, type=int,
 parser.add_argument('--no-cuda', action='store_true', default=False,
                     help='disables CUDA training')
 parser.add_argument('--multiprocessing-distributed', action='store_true',
+                    default=False,
                     help='Use multi-processing distributed training to launch '
                          'N processes per node, which has N GPUs. This is the '
                          'fastest way to use PyTorch for either single node or '
@@ -173,7 +174,7 @@ def worker(gpu, ngpus_per_node, args):
             # available GPUs if device_ids are not set
             model = torch.nn.parallel.DistributedDataParallel(model)
     else:
-        model = torch.nn.DataParallel(model)
+        model = torch.nn.DataParallel(model, device_ids=[args.gpu])
 
     train_dataset = datasets.MNIST(args.data, train=True, download=False,
                                    transform=transforms.Compose([
