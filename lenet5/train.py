@@ -174,7 +174,7 @@ def worker(gpu, ngpus_per_node, args):
             # available GPUs if device_ids are not set
             model = torch.nn.parallel.DistributedDataParallel(model)
     else:
-        model = torch.nn.DataParallel(model, device_ids=[args.gpu])
+        model = torch.nn.DataParallel(model)
 
     train_dataset = datasets.MNIST(args.data, train=True, download=False,
                                    transform=transforms.Compose([
