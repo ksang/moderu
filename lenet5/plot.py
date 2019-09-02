@@ -103,8 +103,7 @@ def main():
     sample_loader = torch.utils.data.DataLoader(
         datasets.MNIST(args.data, train=False,
                         transform=transforms.Compose([
-                           transforms.ToTensor(),
-                           transforms.Normalize((0.1307,), (0.3081,))
+                           transforms.ToTensor()
                         ])),
         batch_size=1, shuffle=True,
         num_workers=0, pin_memory=True)
