@@ -11,9 +11,10 @@ import torch.distributed as dist
 import torch.optim as optim
 import torch.multiprocessing as mp
 from torchvision import datasets, transforms
-from model import LeNet5
+from model import *
 
-parser = argparse.ArgumentParser(description='LeNet-5 MNIST Training')
+
+parser = argparse.ArgumentParser(description='Resnet FashionMNIST Training')
 
 parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
                     help='number of data loading workers (default: 4)')
@@ -28,6 +29,11 @@ parser.add_argument('-b', '--batch-size', default=64, type=int,
                     help='mini-batch size (default: 64), this is the total '
                          'batch size of all GPUs on the current node when '
                          'using Data Parallel or Distributed Data Parallel')
+parser.add_argument('-a', '--arch', default='resnet50', type=str,
+                    choices=['resnet18', 'resnet34', 'resnet50', 'resnet101', 'resnet152',
+                             'resnext50_32x4d', 'resnext101_32x8d', 'wide_resnet50_2',
+                             'wide_resnet101_2'],
+                    help='architecture of model to use')
 parser.add_argument('--lr', '--learning-rate', default=0.01, type=float,
                     metavar='LR', help='initial learning rate', dest='lr')
 parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
@@ -35,8 +41,8 @@ parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
 parser.add_argument('--wd', '--weight-decay', default=1e-4, type=float,
                     metavar='W', help='weight decay (default: 1e-4)',
                     dest='weight_decay')
-parser.add_argument('-p', '--print-freq', default=100, type=int,
-                    metavar='N', help='print frequency')
+parser.add_argument('-p', '--print-freq', default=10, type=int,
+                    metavar='N', help='print frequency (default: 10)')
 parser.add_argument('--resume', default='', type=str, metavar='PATH',
                     help='path to latest checkpoint (default: none)')
 parser.add_argument('-e', '--evaluate', dest='evaluate', action='store_true',
@@ -61,6 +67,19 @@ parser.add_argument('--multiprocessing-distributed', action='store_true',
                          'N processes per node, which has N GPUs. This is the '
                          'fastest way to use PyTorch for either single node or '
                          'multi node data parallel training')
+
+def select_arch(name):
+    return {
+            'resnet18': resnet18,
+            'resnet34': resnet34,
+            'resnet50': resnet50,
+            'resnet101': resnet101,
+            'resnet152': resnet152,
+            'resnext50_32x4d': resnext50_32x4d,
+            'resnext101_32x8d': resnext101_32x8d,
+            'wide_resnet50_2': wide_resnet50_2,
+            'wide_resnet101_2': wide_resnet101_2,
+    }.get(name, 'error')
 
 def adjust_learning_rate(optimizer, epoch, args):
     """Sets the learning rate to the initial LR decayed by 10 every 10 epochs"""
@@ -155,7 +174,8 @@ def worker(gpu, ngpus_per_node, args):
         dist.init_process_group(backend=args.dist_backend, init_method=args.dist_url,
                                 world_size=args.world_size, rank=args.rank)
 
-    model = LeNet5().to(device)
+    print("Use arch: {} for training".format(args.arch))
+    model = select_arch(args.arch)(input_channel=1, num_classes=10).to(device)
 
     if args.distributed:
         # For multiprocessing distributed, DistributedDataParallel constructor
@@ -176,11 +196,11 @@ def worker(gpu, ngpus_per_node, args):
     else:
         model = torch.nn.DataParallel(model)
 
-    train_dataset = datasets.MNIST(args.data, train=True, download=False,
-                                   transform=transforms.Compose([
-                                   transforms.ToTensor(),
-                                   transforms.Normalize((0.1307,), (0.3081,))
-                                   ]))
+    train_dataset = datasets.FashionMNIST(args.data, train=True, download=False,
+                                transform=transforms.Compose([
+                                    transforms.ToTensor(),
+                                    transforms.Normalize((0.1307,), (0.3081,))
+                                    ]))
 
     if args.distributed:
         train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
@@ -192,13 +212,13 @@ def worker(gpu, ngpus_per_node, args):
         num_workers=args.workers, pin_memory=True, sampler=train_sampler)
 
     val_loader = torch.utils.data.DataLoader(
-        datasets.MNIST(args.data, train=False,
-                        transform=transforms.Compose([
-                           transforms.ToTensor(),
-                           transforms.Normalize((0.1307,), (0.3081,))
-                        ])),
-        batch_size=args.batch_size, shuffle=False,
-        num_workers=args.workers, pin_memory=True)
+        datasets.FashionMNIST(args.data, train=False,
+                              transform=transforms.Compose([
+                                  transforms.ToTensor(),
+                                  transforms.Normalize((0.1307,), (0.3081,))
+                              ])),
+                              batch_size=args.batch_size, shuffle=False,
+                              num_workers=args.workers, pin_memory=True)
 
 
     # define loss function (criterion) and optimizer

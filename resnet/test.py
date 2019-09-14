@@ -4,6 +4,8 @@ from torchvision import datasets, transforms
 
 from model import BasicResidualBlock
 from model import BottleneckBlock
+from model import resnet18
+from model import resnet50
 
 BATCH_SIZE = 32
 
@@ -30,6 +32,28 @@ def test_blocks(test_loader):
         print(bottleneck_block)
         break
 
+def test_resnet18(test_loader):
+    model = resnet18(input_channel=1, num_classes=10)
+    print("ResNet-18:")
+    print(model)
+    for batch_idx, (data, target) in enumerate(test_loader):
+        print("Input data shape: {}".format(data.shape))
+        output = model(data)
+        print("Output shape: {}".format(output.shape))
+        break
+
+def test_resnet50(test_loader):
+    model = resnet50(input_channel=1, num_classes=10)
+    print("ResNet-50:")
+    print(model)
+    for batch_idx, (data, target) in enumerate(test_loader):
+        print("Input data shape: {}".format(data.shape))
+        output = model(data)
+        print("Output shape: {}".format(output.shape))
+        break
+
 if __name__ == '__main__':
     test_loader = get_data_loader()
     test_blocks(test_loader)
+    test_resnet18(test_loader)
+    test_resnet50(test_loader)
