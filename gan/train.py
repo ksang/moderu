@@ -1,5 +1,6 @@
 import argparse
 import os
+import time
 import numpy as np
 import math
 
@@ -97,6 +98,7 @@ def train(device, args):
             print("=> no checkpoint found at '{}'".format(args.resume))
 
     for epoch in range(args.start_epoch, args.epochs):
+        start_time = time.time()
         for batch_idx, (imgs, _) in enumerate(train_loader):
 
             # Adversarial ground truths
@@ -138,10 +140,17 @@ def train(device, args):
             d_loss.backward()
             optimizer_D.step()
             if batch_idx % args.print_freq == 0:
-                print(
-                    "[Epoch %d/%d] [Batch %d/%d] [D loss: %f] [G loss: %f]"
-                    % (epoch, args.epochs, batch_idx, len(train_loader), d_loss.item(), g_loss.item())
-                )
+                end_time = time.time()
+                if batch_idx == 0:
+                    thoughput = args.batch_size / (end_time - start_time)
+                else:
+                    thoughput = args.batch_size * args.print_freq / (end_time - start_time)
+                print('Train Epoch: {}/{} [{:>5d}/{} ({:>3.0f}%)] D Loss: {:.6f} G Loss: {:.6f} {:>8.1f} imgs/sec  '.format(
+                    epoch, args.epochs, batch_idx * len(imgs), len(train_loader.dataset),
+                    100. * batch_idx / len(train_loader),
+                    d_loss.item(), g_loss.item(),
+                    thoughput))
+                start_time = time.time()
         if args.save_images:
             os.makedirs(args.save_images, exist_ok=True)
             p = os.path.join(args.save_images, "gan_{}.png".format(epoch))
