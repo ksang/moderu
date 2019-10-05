@@ -48,6 +48,8 @@ parser.add_argument("--channels", type=int, default=1,
                     help="number of image channels")
 parser.add_argument('--resume', default='', type=str, metavar='PATH',
                     help='path to latest checkpoint (default: none)')
+parser.add_argument('--save-images', default='', type=str, metavar='PATH',
+                    help='path to save generated images (default: none)')
 parser.add_argument('--gpu', default=None, type=int,
                     help='GPU id to use.')
 parser.add_argument('--seed', default=None, type=int,
@@ -140,6 +142,11 @@ def train(device, args):
                     "[Epoch %d/%d] [Batch %d/%d] [D loss: %f] [G loss: %f]"
                     % (epoch, args.epochs, batch_idx, len(train_loader), d_loss.item(), g_loss.item())
                 )
+        if args.save_images:
+            os.makedirs(args.save_images, exist_ok=True)
+            p = os.path.join(args.save_images, "gan_{}.png".format(epoch))
+            print("=> saving image '{}'".format(p))
+            save_image(gen_imgs.data[:25], p, nrow=5, normalize=True)
         save_checkpoint({
             'epoch': epoch + 1,
             'generator': generator.state_dict(),
@@ -147,8 +154,6 @@ def train(device, args):
             'optimizer_G' : optimizer_G.state_dict(),
             'optimizer_D' : optimizer_D.state_dict(),
         })
-
-
 
 
 def main():
