@@ -51,7 +51,7 @@ class BasicResidualBlock(nn.Module):
             identity = self.downsample(x)
         # Shortcut/skip-connection
         # If ResNet learned to disable this block, it will eventually
-        # have parameters to 0-like values.
+        # have output to 0-like values.
         out += identity
         out = self.relu(out)
 
